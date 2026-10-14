@@ -1,0 +1,823 @@
+---
+title: "genderstereotype_study2"
+output: html_document
+date: "2026-10-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+---
+title: "gender_stereotype"
+output: html_document
+date: "2026-09-24"
+---
+
+
+```{r}
+library(tidyverse)
+data_path <- "/Users/wangjueying/Documents/uiuc CATS lab/data analysis/data_corrected.csv"
+
+raw <- read.csv(
+  data_path,
+  check.names = FALSE,
+  stringsAsFactors = FALSE
+)
+
+dim(raw)
+```
+
+```{r}
+question_text <- raw[1, ]
+
+dat <- raw[-1, ]
+
+dim(dat)
+dat[dat == ""] <- NA
+```
+
+```{r}
+vignette_vars <- grep(
+  "^V[1-5]Q",
+  names(dat),
+  value = TRUE
+)
+
+length(vignette_vars)
+```
+
+```{r}
+numeric_vars <- c(
+  "Progress",
+  "Duration (in seconds)",
+  "Finished",
+  "Q63",
+  vignette_vars,
+  "Dem3",
+  "Dem5",
+  "Dem8",
+  "Dem9",
+  "Dem10",
+  "Dem11",
+  "Dem12"
+)
+
+dat <- dat %>%
+  mutate(
+    across(
+      all_of(numeric_vars),
+      as.numeric
+    )
+  )
+```
+
+```{r}
+set.seed(20240711)
+
+dat$participant_id <- sample(
+  100000:999999,
+  nrow(dat),
+  replace = FALSE
+)
+```
+
+```{r}
+nrow(dat)
+length(unique(dat$participant_id))
+anyDuplicated(dat$participant_id)
+```
+
+```{r}
+table(dat$Q63, useNA = "ifany")
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    flag_no_consent = is.na(Q63) | Q63 != 1
+  )
+table(dat$flag_no_consent)
+```
+
+```{r}
+table(dat$Finished, useNA = "ifany")
+dat <- dat %>%
+  mutate(
+    flag_unfinished = is.na(Finished) | Finished != 1
+  )
+```
+
+```{r}
+table(dat$Dem5, useNA = "ifany")
+dat <- dat %>%
+  mutate(
+    attention_status = case_when(
+      is.na(Dem5) ~ "Missing / not reached",
+      Dem5 == 4 ~ "Passed",
+      TRUE ~ "Failed"
+    )
+  )
+```
+```{r}
+table(dat$attention_status, useNA = "ifany")
+dat <- dat %>%
+  mutate(
+    flag_attention_failed = attention_status == "Failed"
+  )
+```
+
+```{r}
+for (v in 1:5) {
+
+  vars_v <- grep(
+    paste0("^V", v, "Q"),
+    names(dat),
+    value = TRUE
+  )
+
+  dat[[paste0("V", v, "_n_answered")]] <-
+    rowSums(!is.na(dat[, vars_v, drop = FALSE]))
+}
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    n_vignettes_with_data =
+      (V1_n_answered > 0) +
+      (V2_n_answered > 0) +
+      (V3_n_answered > 0) +
+      (V4_n_answered > 0) +
+      (V5_n_answered > 0)
+  )
+```
+
+```{r}
+table(dat$n_vignettes_with_data)
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    has_any_vignette_data = n_vignettes_with_data > 0,
+    flag_no_vignette_data = n_vignettes_with_data == 0
+  )
+table(dat$flag_no_vignette_data)
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    V1_has_data = V1_n_answered > 0,
+    V2_has_data = V2_n_answered > 0,
+    V3_has_data = V3_n_answered > 0,
+    V4_has_data = V4_n_answered > 0,
+    V5_has_data = V5_n_answered > 0
+  )
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    n_vignette_items_missing =
+      rowSums(is.na(across(all_of(vignette_vars)))),
+
+    prop_vignette_items_missing =
+      n_vignette_items_missing / length(vignette_vars)
+  )
+```
+
+```{r}
+quality_review <- dat %>%
+  select(
+    participant_id,
+    Q63,
+    flag_no_consent,
+    Finished,
+    Progress,
+    flag_unfinished,
+    attention_status,
+    flag_attention_failed,
+    V1_n_answered,
+    V2_n_answered,
+    V3_n_answered,
+    V4_n_answered,
+    V5_n_answered,
+    n_vignettes_with_data,
+    n_vignette_items_missing,
+    prop_vignette_items_missing
+  ) %>%
+  arrange(
+    desc(flag_no_consent),
+    desc(flag_attention_failed),
+    desc(flag_unfinished)
+  )
+
+quality_review
+```
+```{r}
+dat <- dat %>%
+  mutate(
+    eligible_for_analysis =
+      !flag_no_consent &
+      has_any_vignette_data
+  )
+table(dat$eligible_for_analysis)
+```
+
+```{r}
+dat %>%
+  filter(flag_unfinished) %>%
+  select(
+    participant_id,
+    Progress,
+    attention_status,
+    V1_n_answered,
+    V2_n_answered,
+    V3_n_answered,
+    V4_n_answered,
+    V5_n_answered,
+    n_vignettes_with_data
+  )
+```
+
+```{r}
+table(dat$attention_status, useNA = "ifany")
+table(
+  Finished = dat$Finished,
+  Attention = dat$attention_status,
+  useNA = "ifany"
+)
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    age = readr::parse_number(Dem1)
+  )
+
+table(dat$age, useNA = "ifany")
+
+age_summary <- dat %>%
+  summarise(
+    N_total = n(),
+    N_valid = sum(!is.na(age)),
+    N_missing = sum(is.na(age)),
+    Mean = mean(age, na.rm = TRUE),
+    SD = sd(age, na.rm = TRUE),
+    Median = median(age, na.rm = TRUE),
+    Min = min(age, na.rm = TRUE),
+    Max = max(age, na.rm = TRUE)
+  )
+
+age_summary
+dat %>%
+  select(participant_id, Dem1, age) %>%
+  arrange(age)
+```
+
+```{r}
+gender_raw <- dat %>%
+  count(Dem2, sort = TRUE)
+
+gender_raw
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    gender_text = Dem2 %>%
+      str_trim() %>%
+      str_to_lower(),
+
+    gender = case_when(
+      gender_text %in% c(
+        "woman",
+        "women",
+        "female"
+      ) ~ "Woman",
+
+      gender_text %in% c(
+        "man",
+        "male",
+        "trans man"
+      ) ~ "Man",
+
+      gender_text == "nonbinary" ~ "Nonbinary",
+
+      is.na(gender_text) ~ NA_character_,
+
+      TRUE ~ "Other / review"
+    )
+  )
+
+table(dat$gender, useNA = "ifany")
+gender_summary <- dat %>%
+  filter(!is.na(gender)) %>%
+  count(gender) %>%
+  mutate(
+    percent = n / sum(n) * 100
+  )
+
+gender_summary
+```
+```{r}
+dat %>%
+  filter(gender_text == "trans man") %>%
+  select(
+    participant_id,
+    Dem2,
+    gender,
+    Dem3
+  )
+```
+
+
+```{r}
+dat <- dat %>%
+  mutate(
+    transgender = factor(
+      Dem3,
+      levels = c(1, 2, 3, 4),
+      labels = c(
+        "Yes",
+        "No",
+        "Not sure",
+        "Prefer not to say"
+      )
+    )
+  )
+
+transgender_summary <- dat %>%
+  count(transgender, .drop = FALSE) %>%
+  mutate(
+    percent = n / nrow(dat) * 100
+  )
+
+transgender_summary
+```
+```{r}
+table(dat$Dem4, useNA = "ifany")
+selected_option <- function(x, code) {
+  str_detect(
+    paste0(",", x, ","),
+    paste0(",", code, ",")
+  )
+}
+dat <- dat %>%
+  mutate(
+    sexual_asexual      = selected_option(Dem4, 1),
+    sexual_gay          = selected_option(Dem4, 2),
+    sexual_lesbian      = selected_option(Dem4, 3),
+    sexual_queer        = selected_option(Dem4, 4),
+    sexual_bisexual     = selected_option(Dem4, 5),
+    sexual_pansexual    = selected_option(Dem4, 6),
+    sexual_straight     = selected_option(Dem4, 7),
+    sexual_prefer_no    = selected_option(Dem4, 8),
+    sexual_other        = selected_option(Dem4, 9),
+    sexual_gynosexual   = selected_option(Dem4, 10),
+    sexual_androsexual  = selected_option(Dem4, 11),
+    sexual_demisexual   = selected_option(Dem4, 12),
+    sexual_graysexual   = selected_option(Dem4, 13)
+  )
+sexual_vars <- c(
+  "sexual_asexual",
+  "sexual_gay",
+  "sexual_lesbian",
+  "sexual_queer",
+  "sexual_bisexual",
+  "sexual_pansexual",
+  "sexual_straight",
+  "sexual_prefer_no",
+  "sexual_other",
+  "sexual_gynosexual",
+  "sexual_androsexual",
+  "sexual_demisexual",
+  "sexual_graysexual"
+)
+
+dat[is.na(dat$Dem4), sexual_vars] <- NA
+sexual_orientation_summary <- tibble(
+  category = c(
+    "Asexual",
+    "Gay",
+    "Lesbian",
+    "Queer",
+    "Bisexual",
+    "Pansexual",
+    "Straight/heterosexual",
+    "Prefer not to answer",
+    "Something else",
+    "Gynosexual",
+    "Androsexual",
+    "Demisexual",
+    "Gray-sexual"
+  ),
+  n = sapply(
+    dat[sexual_vars],
+    function(x) sum(x, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    percent = n / sum(!is.na(dat$Dem4)) * 100
+  )
+
+sexual_orientation_summary
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    race_black          = selected_option(Dem6, 1),
+    race_pacific        = selected_option(Dem6, 2),
+    race_east_asian     = selected_option(Dem6, 3),
+    race_southeast_asian = selected_option(Dem6, 4),
+    race_south_asian    = selected_option(Dem6, 5),
+    race_central_asian  = selected_option(Dem6, 6),
+    race_mena           = selected_option(Dem6, 7),
+    race_white          = selected_option(Dem6, 8),
+    race_jewish         = selected_option(Dem6, 9),
+    race_latin          = selected_option(Dem6, 10),
+    race_indigenous     = selected_option(Dem6, 11),
+    race_multiracial    = selected_option(Dem6, 12),
+    race_multicultural  = selected_option(Dem6, 13),
+    race_other          = selected_option(Dem6, 14),
+    race_prefer_no      = selected_option(Dem6, 15)
+  )
+race_vars <- c(
+  "race_black",
+  "race_pacific",
+  "race_east_asian",
+  "race_southeast_asian",
+  "race_south_asian",
+  "race_central_asian",
+  "race_mena",
+  "race_white",
+  "race_jewish",
+  "race_latin",
+  "race_indigenous",
+  "race_multiracial",
+  "race_multicultural",
+  "race_other",
+  "race_prefer_no"
+)
+
+dat[is.na(dat$Dem6), race_vars] <- NA
+race_summary <- tibble(
+  category = c(
+    "Black/African/African American",
+    "Native Hawaiian/Pacific Islander",
+    "East Asian",
+    "Southeast Asian",
+    "South Asian/Desi",
+    "Central Asian",
+    "Middle Eastern/Southwest Asian/North African/Arab",
+    "European/European American (White)",
+    "Jewish",
+    "Latin American/Hispanic",
+    "Indigenous/Native American/Alaska Native",
+    "Multiracial",
+    "Multicultural",
+    "Another term",
+    "Prefer not to answer"
+  ),
+  n = sapply(
+    dat[race_vars],
+    function(x) sum(x, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    percent = n / sum(!is.na(dat$Dem6)) * 100
+  )
+
+race_summary
+dat %>%
+  filter(
+    race_multiracial == TRUE |
+    race_multicultural == TRUE |
+    race_other == TRUE
+  ) %>%
+  select(
+    participant_id,
+    Dem6,
+    Dem6_12_TEXT,
+    Dem6_13_TEXT,
+    Dem6_14_TEXT
+  )
+```
+```{r}
+dat <- dat %>%
+  mutate(
+    religion_none       = selected_option(Dem7, 1),
+    religion_catholic   = selected_option(Dem7, 2),
+    religion_christian_other = selected_option(Dem7, 3),
+    religion_muslim     = selected_option(Dem7, 4),
+    religion_buddhist   = selected_option(Dem7, 5),
+    religion_hindu      = selected_option(Dem7, 6),
+    religion_jewish     = selected_option(Dem7, 7),
+    religion_atheist    = selected_option(Dem7, 8),
+    religion_agnostic   = selected_option(Dem7, 9),
+    religion_spiritual  = selected_option(Dem7, 10),
+    religion_other      = selected_option(Dem7, 11)
+  )
+religion_vars <- c(
+  "religion_none",
+  "religion_catholic",
+  "religion_christian_other",
+  "religion_muslim",
+  "religion_buddhist",
+  "religion_hindu",
+  "religion_jewish",
+  "religion_atheist",
+  "religion_agnostic",
+  "religion_spiritual",
+  "religion_other"
+)
+
+dat[is.na(dat$Dem7), religion_vars] <- NA
+religion_summary <- tibble(
+  category = c(
+    "No religious affiliation",
+    "Catholic",
+    "Other Christian",
+    "Muslim",
+    "Buddhist",
+    "Hindu",
+    "Jewish",
+    "Atheist",
+    "Agnostic",
+    "Spiritual but not religious",
+    "Another term"
+  ),
+  n = sapply(
+    dat[religion_vars],
+    function(x) sum(x, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    percent = n / sum(!is.na(dat$Dem7)) * 100
+  )
+
+religion_summary
+```
+
+```{r}
+ses_summary <- dat %>%
+  summarise(
+    N_valid = sum(!is.na(Dem8)),
+    N_missing = sum(is.na(Dem8)),
+    Mean = mean(Dem8, na.rm = TRUE),
+    SD = sd(Dem8, na.rm = TRUE),
+    Median = median(Dem8, na.rm = TRUE),
+    Min = min(Dem8, na.rm = TRUE),
+    Max = max(Dem8, na.rm = TRUE)
+  )
+
+ses_summary
+table(dat$Dem8, useNA = "ifany")
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    education = factor(
+      Dem9,
+      levels = 1:10,
+      labels = c(
+        "Less than one year",
+        "One year to start of high school",
+        "High school, no diploma",
+        "High school graduate/GED",
+        "Some college",
+        "Associate degree",
+        "Bachelor's degree",
+        "Master's degree",
+        "Professional degree",
+        "Doctorate degree"
+      )
+    )
+  )
+
+education_summary <- dat %>%
+  count(education, .drop = FALSE) %>%
+  mutate(
+    percent = n / nrow(dat) * 100
+  )
+
+education_summary
+```
+```{r}
+dat <- dat %>%
+  mutate(
+    political_view = factor(
+      Dem10,
+      levels = 1:7,
+      labels = c(
+        "Very liberal",
+        "Liberal",
+        "Lean liberal",
+        "Centrist",
+        "Lean conservative",
+        "Conservative",
+        "Very conservative"
+      )
+    )
+  )
+
+political_summary <- dat %>%
+  count(political_view, .drop = FALSE) %>%
+  mutate(
+    percent = n / nrow(dat) * 100
+  )
+
+political_summary
+```
+
+```{r}
+dat <- dat %>%
+  mutate(
+    political_party = factor(
+      Dem11,
+      levels = 1:4,
+      labels = c(
+        "None",
+        "Republican",
+        "Democratic",
+        "Other"
+      )
+    )
+  )
+
+party_summary <- dat %>%
+  count(political_party, .drop = FALSE) %>%
+  mutate(
+    percent = n / nrow(dat) * 100
+  )
+
+party_summary
+dat %>%
+  filter(Dem11 == 4) %>%
+  select(
+    participant_id,
+    political_party,
+    Dem11_4_TEXT
+  )
+```
+```{r}
+dat <- dat %>%
+  mutate(
+    seriousness = factor(
+      Dem12,
+      levels = 1:5,
+      labels = c(
+        "Not seriously at all",
+        "Slightly seriously",
+        "Somewhat seriously",
+        "Seriously",
+        "Completely seriously"
+      )
+    )
+  )
+
+seriousness_summary <- dat %>%
+  count(seriousness, .drop = FALSE) %>%
+  mutate(
+    percent = n / nrow(dat) * 100
+  )
+
+seriousness_summary
+```
+
+```{r}
+
+vignette_vars <- grep(
+  "^V[1-5]Q",
+  names(dat),
+  value = TRUE
+)
+
+length(vignette_vars)
+
+table(substr(vignette_vars, 1, 2))
+```
+
+```{r}
+long_dat <- dat %>%
+  pivot_longer(
+    cols = matches("^V[1-5]Q"),
+    names_to = c("vignette", ".value"),
+    names_pattern = "^V([1-5])(Q[1-4]_[0-9]+)$"
+  ) %>%
+  mutate(
+    vignette = factor(
+      vignette,
+      levels = c("1", "2", "3", "4", "5"),
+      labels = c("V1", "V2", "V3", "V4", "V5")
+    )
+  )
+names_to = c("vignette", ".value")
+```
+
+```{r}
+dim(long_dat)
+table(long_dat$vignette)
+long_dat %>%
+  count(participant_id) %>%
+  count(n)
+
+```
+
+```{r}
+outcome_vars <- grep(
+  "^Q[1-4]_",
+  names(long_dat),
+  value = TRUE
+)
+
+length(outcome_vars)
+```
+
+```{r}
+table(
+  sub("_.*", "", outcome_vars)
+)
+```
+
+```{r}
+long_dat <- long_dat %>%
+  rowwise() %>%
+  mutate(
+    n_items_answered = sum(
+      !is.na(c_across(all_of(outcome_vars)))
+    ),
+
+    vignette_has_data = n_items_answered > 0
+  ) %>%
+  ungroup()
+table(long_dat$vignette_has_data)
+```
+
+```{r}
+long_dat %>%
+  filter(!vignette_has_data) %>%
+  select(
+    participant_id,
+    vignette,
+    Finished,
+    Progress,
+    attention_status,
+    n_items_answered
+  )
+```
+
+```{r}
+long_dat %>%
+  filter(participant_id == first(participant_id)) %>%
+  select(
+    participant_id,
+    vignette,
+    Q1_1:Q1_10,
+    n_items_answered
+  )
+```
+
+```{r}
+write.csv(
+  long_dat,
+  "/Users/wangjueying/Documents/uiuc CATS lab/data analysis/data_long.csv",
+  row.names = FALSE,
+  na = ""
+)
+```
+
+```{r}
+long_dat %>%
+  filter(participant_id == 249310) %>%
+  select(
+    participant_id,
+    vignette,
+    Finished,
+    Progress,
+    attention_status,
+    n_items_answered
+  )
+dat %>%
+  filter(participant_id == 249310) %>%
+  select(
+    participant_id,
+    Finished,
+    Progress,
+    attention_status,
+    V1_n_answered,
+    V2_n_answered,
+    V3_n_answered,
+    V4_n_answered,
+    V5_n_answered
+  )
+```
+
+
+```
+
